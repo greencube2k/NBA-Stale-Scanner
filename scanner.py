@@ -1,56 +1,59 @@
 import requests
 import os
 
-API_KEY = os.environ.get("API_KEY")
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
+API_KEY = os.getenv("API_KEY")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
 
-EV_THRESHOLD = 0.03
+SPORT = "basketball_nba"
+REGIONS = "us"
+MARKETS = "player_points,player_rebounds,player_assists"
+ODDS_FORMAT = "decimal"
 
-def send_alert(msg):
+def send_telegram(message):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, data={"chat_id": CHAT_ID, "text": msg})
-
-def remove_vig(over, under):
-    p_over = 1/over
-    p_under = 1/under
-    total = p_over + p_under
-    return p_over/total
-
-def calculate_ev(true_p, soft_odds):
-    return (true_p * soft_odds) - 1
-
-def get_odds():
-    url = f"https://api.the-odds-api.com/v4/sports/basketball_nba/odds/"
-    params = {
-        "apiKey": API_KEY,
-        "regions": "us",
-        "markets": "player_points,player_assists,player_rebounds",
-        "bookmakers": "fanduel,stake"
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": message
     }
-    return requests.get(url, params=params).json()
+    requests.post(url, data=payload)
 
 def scan():
-    data = get_odds()
+    url = f"https://api.the-odds-api.com/v4/sports/{SPORT}/odds"
+    params = {
+        "apiKey": API_KEY,
+        "regions": REGIONS,
+        "markets": MARKETS,
+        "oddsFormat": ODDS_FORMAT
+    }
+
+    response = requests.get(url, params=params)
+
+    print("STATUS CODE:", response.status_code)
+    print("RAW RESPONSE:", response.text)
+
+    if response.status_code != 200:
+        send_telegram("API ERROR ❌")
+        return
+
+    try:
+        data = response.json()
+    except:
+        send_telegram("JSON PARSE ERROR ❌")
+        return
+
+    if not isinstance(data, list):
+        send_telegram("API trả về không phải list ❌")
+        return
+
+    message = "NBA Scan Running ✅\n"
 
     for game in data:
-        bookmakers = {b["key"]: b for b in game.get("bookmakers", [])}
+        home = game.get("home_team")
+        away = game.get("away_team")
+        message += f"\n{away} @ {home}"
 
-        if "fanduel" not in bookmakers or "stake" not in bookmakers:
-            continue
+    send_telegram(message)
 
-        sharp = bookmakers["fanduel"]
-        soft = bookmakers["stake"]
-
-        # Demo logic (ta sẽ nâng cấp mapping sau)
-        sharp_over = 1.85
-        sharp_under = 1.95
-        soft_over = 2.05
-
-        true_p = remove_vig(sharp_over, sharp_under)
-        ev = calculate_ev(true_p, soft_over)
-
-        if ev > EV_THRESHOLD:
-            send_alert(f"VALUE FOUND! EV={round(ev*100,2)}%")
-
-scan()
+if __name__ == "__main__":
+    scan()
