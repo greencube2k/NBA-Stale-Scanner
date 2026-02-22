@@ -33,8 +33,8 @@ def scan():
     print("RAW RESPONSE:", response.text)
 
     if response.status_code != 200:
-        send_telegram("API ERROR ❌")
-        return
+    send_telegram(f"API ERROR ❌\nStatus: {response.status_code}\n{response.text}")
+    return
 
     try:
         data = response.json()
